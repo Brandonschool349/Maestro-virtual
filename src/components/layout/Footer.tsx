@@ -1,3 +1,5 @@
+"use client";
+
 import { Link } from "@/i18n/navigation";
 import {
   ArrowUpRight,
@@ -14,6 +16,7 @@ import {
 } from "react-icons/fa6";
 
 import Container from "@/components/ui/Container";
+import { replayAppSplash } from "@/components/ui/AppSplash";
 
 const exploreLinks = [
   { label: "Inicio", href: "/" },
@@ -126,6 +129,8 @@ export default function Footer() {
           <div className="space-y-3">
             <Link
             href="/"
+            onClick={() => replayAppSplash()}
+            data-skip-transition-flash="true"
             className="
             inline-flex
             items-center
