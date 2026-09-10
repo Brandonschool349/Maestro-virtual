@@ -18,32 +18,31 @@ const REPLAY_EVENT = 'mv-splash-replay';
 const VISIBLE_MS = 1500;
 
 export default function AppSplash() {
-  // Inicia visible: SSR renderiza así, el CSS (via .splash-shown) decide si mostrarlo.
-  const [visible, setVisible] = useState(true);
+  // Estado inicial: en cliente lee sessionStorage; en SSR default a true.
+  // Usamos initializer function para que corra sólo una vez y NO se cuente
+  // como "setState en effect body" (regla react-hooks/set-state-in-effect).
+  const [visible, setVisible] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return !sessionStorage.getItem(STORAGE_KEY);
+  });
 
+  // Autohide: cuando el splash está visible, marca sessionStorage y
+  // agenda el fade-out. El setVisible corre dentro de un setTimeout
+  // callback (no en el body del effect) -> regla satisfecha.
   useEffect(() => {
-    const wasShown =
-      typeof window !== 'undefined' && sessionStorage.getItem(STORAGE_KEY);
+    if (!visible) return;
+    sessionStorage.setItem(STORAGE_KEY, '1');
+    const timer = setTimeout(() => setVisible(false), VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [visible]);
 
-    if (wasShown) {
-      // Ya se mostró: sincronizamos el estado del componente con la realidad
-      // (el CSS lo ocultó, pero React necesita saber que no debe animar).
-      setVisible(false);
-    } else {
-      sessionStorage.setItem(STORAGE_KEY, '1');
-      const timer = setTimeout(() => setVisible(false), VISIBLE_MS);
-      return () => clearTimeout(timer);
-    }
-  }, []);
-
-  // Handler para replay: cuando el usuario hace click en el logo del navbar.
+  // Handler para replay: click en logo del navbar / footer.
+  // setVisible(true) va dentro de un event handler, no del effect body.
   useEffect(() => {
     const handleReplay = () => {
       document.documentElement.classList.remove('splash-shown');
       sessionStorage.removeItem(STORAGE_KEY);
       setVisible(true);
-      sessionStorage.setItem(STORAGE_KEY, '1');
-      setTimeout(() => setVisible(false), VISIBLE_MS);
     };
 
     window.addEventListener(REPLAY_EVENT, handleReplay);

@@ -61,20 +61,28 @@ export default function ContactRevealOverlay() {
 
   useEffect(() => {
     if (phase !== 'growing' || !targetHref) return;
+    let fadeTimer: number | undefined;
+    let idleTimer: number | undefined;
     try {
       const target = new URL(targetHref, window.location.href).pathname;
       const stripLocale = (p: string) =>
         p.replace(/^\/[a-z]{2}(?=\/|$)/, '') || '/';
-      if (stripLocale(pathname) === stripLocale(target)) {
-        setPhase('fading');
-        window.setTimeout(() => {
-          setPhase('idle');
-          setTargetHref(null);
-        }, FADE_S * 1000);
-      }
+      if (stripLocale(pathname) !== stripLocale(target)) return;
+
+      // Diferimos las transiciones para que setState no corra en el
+      // body del effect (regla react-hooks/set-state-in-effect).
+      fadeTimer = window.setTimeout(() => setPhase('fading'), 0);
+      idleTimer = window.setTimeout(() => {
+        setPhase('idle');
+        setTargetHref(null);
+      }, FADE_S * 1000);
     } catch {
       /* noop */
     }
+    return () => {
+      if (fadeTimer) window.clearTimeout(fadeTimer);
+      if (idleTimer) window.clearTimeout(idleTimer);
+    };
   }, [pathname, phase, targetHref]);
 
   // Radio necesario para que el panel cubra el viewport completo

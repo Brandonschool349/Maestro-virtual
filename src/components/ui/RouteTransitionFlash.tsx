@@ -93,13 +93,12 @@ export default function RouteTransitionFlash() {
           aria-hidden
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={{ opacity: 0, transition: { duration: FADE_OUT_S } }}
           transition={{
             opacity: {
               duration: FADE_IN_S,
               ease: [0.16, 1, 0.3, 1],
             },
-            exit: { duration: FADE_OUT_S },
           }}
           className="pointer-events-none fixed inset-0 z-[90] backdrop-blur-[2px]"
           style={{
