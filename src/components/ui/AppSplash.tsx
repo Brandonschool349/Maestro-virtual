@@ -8,7 +8,7 @@
 // Resultado: cero flash de contenido antes del splash.
 //
 // Además escucha el evento 'mv-splash-replay' (disparado al clic en el logo
-// del Navbar) para poder re-animarlo bajo demanda.
+// del Navbar/Footer) para poder re-animarlo bajo demanda.
 
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -18,33 +18,39 @@ const REPLAY_EVENT = 'mv-splash-replay';
 const VISIBLE_MS = 1500;
 
 export default function AppSplash() {
-  // Estado inicial: en cliente lee sessionStorage; en SSR default a true.
-  // Usamos initializer function para que corra sólo una vez y NO se cuente
-  // como "setState en effect body" (regla react-hooks/set-state-in-effect).
-  const [visible, setVisible] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    return !sessionStorage.getItem(STORAGE_KEY);
+  // Id único por "session" del splash:
+  //   0     -> oculto (o ya se mostró en esta pageload)
+  //   1     -> primera carga sin sessionStorage previo
+  //   >=2   -> replays disparados via evento
+  //
+  // Cada incremento genera una nueva `key` en el motion.div, forzando
+  // a AnimatePresence a montar un elemento fresco (initial->animate
+  // limpio). Sin id único, un replay rápido reutilizaba el mismo nodo
+  // y los children se quedaban sin animar / el auto-hide se atoraba.
+  const [splashId, setSplashId] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1;
+    return sessionStorage.getItem(STORAGE_KEY) ? 0 : 1;
   });
 
-  // Autohide: cuando el splash está visible, marca sessionStorage y
-  // agenda el fade-out. El setVisible corre dentro de un setTimeout
-  // callback (no en el body del effect) -> regla satisfecha.
-  useEffect(() => {
-    if (!visible) return;
-    sessionStorage.setItem(STORAGE_KEY, '1');
-    const timer = setTimeout(() => setVisible(false), VISIBLE_MS);
-    return () => clearTimeout(timer);
-  }, [visible]);
+  const visible = splashId > 0;
 
-  // Handler para replay: click en logo del navbar / footer.
-  // setVisible(true) va dentro de un event handler, no del effect body.
+  // Cada session visible: marca sessionStorage y agenda auto-hide.
+  useEffect(() => {
+    if (splashId === 0) return;
+    sessionStorage.setItem(STORAGE_KEY, '1');
+    const timer = setTimeout(() => setSplashId(0), VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [splashId]);
+
+  // Replay via evento (logo navbar / footer).
   useEffect(() => {
     const handleReplay = () => {
+      // El script inline del root layout pudo haber agregado esta
+      // clase al primer pageload; la quitamos para que el CSS no
+      // oculte el replay via `display:none`.
       document.documentElement.classList.remove('splash-shown');
-      sessionStorage.removeItem(STORAGE_KEY);
-      setVisible(true);
+      setSplashId((id) => id + 1);
     };
-
     window.addEventListener(REPLAY_EVENT, handleReplay);
     return () => window.removeEventListener(REPLAY_EVENT, handleReplay);
   }, []);
@@ -53,7 +59,7 @@ export default function AppSplash() {
     <AnimatePresence>
       {visible && (
         <motion.div
-          key="app-splash"
+          key={`app-splash-${splashId}`}
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}

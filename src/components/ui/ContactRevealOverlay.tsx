@@ -41,6 +41,13 @@ export default function ContactRevealOverlay() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [origin, setOrigin] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [targetHref, setTargetHref] = useState<string | null>(null);
+  // triggerId se incrementa por cada disparo del reveal. Se usa en
+  // la `key` del motion.div para forzar a AnimatePresence a montar
+  // un elemento fresco (initial->animate limpio). Sin esto, el 2do
+  // disparo reutilizaba el mismo nodo y framer-motion interpolaba
+  // desde el estado actual (opacity 0 del exit anterior) al nuevo
+  // animate -> se veía como fade en vez de crecer del origen.
+  const [triggerId, setTriggerId] = useState<number>(0);
 
   useEffect(() => {
     const onReveal = (e: Event) => {
@@ -48,6 +55,7 @@ export default function ContactRevealOverlay() {
       if (!detail) return;
       setOrigin({ x: detail.x, y: detail.y });
       setTargetHref(detail.href);
+      setTriggerId((id) => id + 1);
       setPhase('growing');
       window.setTimeout(
         () => router.push(detail.href as never),
@@ -63,25 +71,41 @@ export default function ContactRevealOverlay() {
     if (phase !== 'growing' || !targetHref) return;
     let fadeTimer: number | undefined;
     let idleTimer: number | undefined;
-    try {
-      const target = new URL(targetHref, window.location.href).pathname;
-      const stripLocale = (p: string) =>
-        p.replace(/^\/[a-z]{2}(?=\/|$)/, '') || '/';
-      if (stripLocale(pathname) !== stripLocale(target)) return;
+    let fallbackTimer: number | undefined;
 
-      // Diferimos las transiciones para que setState no corra en el
-      // body del effect (regla react-hooks/set-state-in-effect).
+    const scheduleFade = () => {
       fadeTimer = window.setTimeout(() => setPhase('fading'), 0);
       idleTimer = window.setTimeout(() => {
         setPhase('idle');
         setTargetHref(null);
       }, FADE_S * 1000);
+    };
+
+    try {
+      const target = new URL(targetHref, window.location.href).pathname;
+      const stripLocale = (p: string) =>
+        p.replace(/^\/[a-z]{2}(?=\/|$)/, '') || '/';
+
+      if (stripLocale(pathname) === stripLocale(target)) {
+        // Ruta ya coincide -> disparar fade.
+        scheduleFade();
+      } else {
+        // Fallback: si el pathname no cambia después de todo el grow
+        // + un pequeño margen (ej. click en Contáctanos estando ya en
+        // /contact, o navegación abortada), forzamos el fade para no
+        // dejar el overlay atrapado.
+        fallbackTimer = window.setTimeout(
+          scheduleFade,
+          (GROW_S + 0.3) * 1000,
+        );
+      }
     } catch {
       /* noop */
     }
     return () => {
       if (fadeTimer) window.clearTimeout(fadeTimer);
       if (idleTimer) window.clearTimeout(idleTimer);
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
     };
   }, [pathname, phase, targetHref]);
 
@@ -103,7 +127,7 @@ export default function ContactRevealOverlay() {
     <AnimatePresence>
       {phase !== 'idle' && (
         <motion.div
-          key="contact-reveal-v3"
+          key={`contact-reveal-${triggerId}`}
           className="pointer-events-none fixed inset-0 z-[150] overflow-hidden"
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
